@@ -6,7 +6,6 @@ void updateBalls() {
     for (size_t i = 0; i < balls.size(); ++i) {
         Ball& ball = balls[i];
 
-        // Если шарик прикреплен к панели, держим его там
         if (ball.attached) {
             ball.x = (float)(paddle.x + paddle.w / 2.0f);
             ball.y = (float)(paddle.y - BALL_SIZE);
@@ -16,17 +15,15 @@ void updateBalls() {
         ball.x += ball.vx * ball.speed;
         ball.y += ball.vy * ball.speed;
 
-        // Проверка отскока от стен
         if (ball.x < 0 || ball.x + BALL_SIZE > SCREEN_WIDTH) ball.vx = -ball.vx;
         if (ball.y < 0) ball.vy = -ball.vy;
 
-        // Если шарик падает ниже панели, то уменьшаем количество жизней
         if (ball.y > SCREEN_HEIGHT) {
             if (safetyBottomActive) {
-                // отскакиваем от "дно-каретки"
+                
                 ball.y = SCREEN_HEIGHT - BALL_SIZE - 1;
                 ball.vy = -fabs(ball.vy);
-                safetyBottomActive = false; // одноразовое
+                safetyBottomActive = false; 
             }
             else if (balls.size() > 1) {
                 balls.erase(balls.begin() + i);
@@ -42,7 +39,6 @@ void updateBalls() {
 
         SDL_Rect ballRect = { (int)ball.x, (int)ball.y, BALL_SIZE, BALL_SIZE };
 
-        // Отскок от панели
         if (SDL_HasIntersection(&ballRect, &paddle)) {
             ball.vy = -fabs(ball.vy);
             float hitPos = ((float)(ball.x + BALL_SIZE / 2.0) - paddle.x) / paddle.w - 0.5f;
@@ -54,7 +50,6 @@ void updateBalls() {
             }
         }
 
-        // Отскок от блоков
         for (auto& block : blocks) {
             if (!block.active) continue;
             if (SDL_HasIntersection(&ballRect, &block.rect)) {
@@ -68,7 +63,7 @@ void updateBalls() {
                         }
                     }
                     else {
-                        // Понижение "прочности"
+                       
                         switch (block.type) {
                         case STRONG_3:
                             block.type = STRONG_2;
@@ -83,12 +78,10 @@ void updateBalls() {
                     }
                 }
 
-                // Вычисление предыдущей позиции
                 float prevX = ball.x - ball.vx * ball.speed;
                 float prevY = ball.y - ball.vy * ball.speed;
                 SDL_Rect prevRect = { (int)prevX, (int)prevY, BALL_SIZE, BALL_SIZE };
 
-                // Определение направления отскока
                 bool fromLeft = prevRect.x + BALL_SIZE <= block.rect.x;
                 bool fromRight = prevRect.x >= block.rect.x + block.rect.w;
                 bool fromTop = prevRect.y + BALL_SIZE <= block.rect.y;
@@ -103,7 +96,6 @@ void updateBalls() {
             }
         }
 
-        // Обработка столкновений между шарами
         for (size_t i = 0; i < balls.size(); ++i) {
             for (size_t j = i + 1; j < balls.size(); ++j) {
                 Ball& a = balls[i];
@@ -113,12 +105,10 @@ void updateBalls() {
                 float dy = (a.y + BALL_SIZE / 2) - (b.y + BALL_SIZE / 2);
                 float distance = std::sqrt(dx * dx + dy * dy);
 
-                if (distance < BALL_SIZE) {  // простая круговая проверка
-                    // Нормализуем вектор
+                if (distance < BALL_SIZE) {  
                     float nx = dx / distance;
                     float ny = dy / distance;
 
-                    // Обмен скоростей по направлению столкновения
                     float v1 = a.vx * nx + a.vy * ny;
                     float v2 = b.vx * nx + b.vy * ny;
 
@@ -129,7 +119,6 @@ void updateBalls() {
                     b.vx += exchange * nx;
                     b.vy += exchange * ny;
 
-                    // Немного раздвигаем шарики, чтобы не залипли
                     float overlap = BALL_SIZE - distance;
                     a.x += nx * (overlap / 2);
                     a.y += ny * (overlap / 2);
