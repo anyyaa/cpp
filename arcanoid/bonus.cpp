@@ -4,7 +4,7 @@ void spawnBonus(int x, int y) {
     Bonus bonus;
     bonus.rect = { x, y, 20, 20 };
     if (!extraBallGiven) {
-        bonus.type = 0; // первый бонус — обязательно второй шарик
+        bonus.type = 0; 
         extraBallGiven = true;
     }
     else {
@@ -19,14 +19,12 @@ void spawnBonus(int x, int y) {
 void updateBonuses() {
     for (auto& bonus : bonuses) {
         if (!bonus.active) continue;
-        bonus.rect.y += 2; // Бонус падает вниз
-
-        // Если бонус пересекает с панелью
+        bonus.rect.y += 2; 
         if (SDL_HasIntersection(&bonus.rect, &paddle)) {
             switch (bonus.type) {
-            case 0: { // Второй шарик
+            case 0: { 
                 if (!balls.empty()) {
-                    // Создаем новый шарик, если он еще не был создан
+                    
                     Ball newBall = balls[0];
                     newBall.x += 10;
                     newBall.y += 10;
@@ -42,7 +40,7 @@ void updateBonuses() {
                 if (paddle.w > SCREEN_WIDTH) paddle.w = SCREEN_WIDTH;
                 break;
             case 2:
-                // Увеличить скорость у всех шаров на 5
+               
                 for (auto& ball : balls) {
                     ball.speed += 1.5f;
                 }
@@ -56,10 +54,9 @@ void updateBonuses() {
                 break;
 
             }
-            bonus.active = false; // Бонус пропадает после активации
+            bonus.active = false;
         }
 
-        // Если бонус выходит за пределы экрана, он пропадает
         if (bonus.rect.y > SCREEN_HEIGHT) {
             bonus.active = false;
         }
