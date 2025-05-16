@@ -1,17 +1,9 @@
+#include "game.hpp"
+#include "ball.hpp"
+#include "bonus.hpp"
+#include "render.hpp"
 #include "common.hpp"
-#include <cstdlib>
-
-SDL_Window* window = nullptr;
-SDL_Renderer* renderer = nullptr;
-SDL_Rect paddle;
-std::vector<Ball> balls;
-std::vector<Block> blocks;
-std::vector<Bonus> bonuses;
-bool sticky = false;
-int stickyHitsLeft = 0;
-int score = 0;
-bool extraBallGiven = false;
-bool safetyBottomActive = false;
+#include "block.hpp"
 
 void initGame() {
     paddle = { SCREEN_WIDTH / 2 - PADDLE_WIDTH / 2, SCREEN_HEIGHT - 40, PADDLE_WIDTH, PADDLE_HEIGHT };
@@ -19,6 +11,12 @@ void initGame() {
     Ball ball = { (float)(paddle.x + PADDLE_WIDTH / 2.0f), (float)(paddle.y - BALL_SIZE), 0.0f, -1.0f, 5.0f, true };
     balls.push_back(ball);
     blocks.clear();
+    bonuses.clear();
+    score = 0;
+    sticky = false;
+    stickyHitsLeft = 0;
+    safetyBottomActive = false;
+    speedBonusBouncesLeft = 0;
 
     const int GAP = 2;
     const int blockWidth = (SCREEN_WIDTH - (COLS - 1) * GAP) / COLS;
@@ -26,18 +24,25 @@ void initGame() {
 
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
-            Block block;
-            block.rect = { j * (blockWidth + GAP), i * (blockHeight + GAP) + 50, blockWidth, blockHeight };
-            int type = rand() % 10;
-            if (type < 4) block.type = STANDARD, block.hitsLeft = 1;
-            else if (type == 4) block.type = BONUS, block.hitsLeft = 1;
-            else if (type == 5) block.type = STRONG_2, block.hitsLeft = 2;
-            else if (type == 6) block.type = STRONG_3, block.hitsLeft = 3;
-            else block.type = INDESTRUCTIBLE, block.hitsLeft = -1;
+            int x = j * (blockWidth + GAP);
+            int y = i * (blockHeight + GAP) + 50;
 
-            block.active = true;
-            block.opacity = 255;
-            blocks.push_back(block);
+            int type = rand() % 10;
+            if (type < 4) {
+                blocks.push_back(std::make_unique<StandardBlock>(x, y));
+            }
+            else if (type == 4) {
+                blocks.push_back(std::make_unique<BonusBlock>(x, y));
+            }
+            else if (type == 5 || type == 6) {
+                blocks.push_back(std::make_unique<StrongBlock>(x, y, 2));
+            }
+            else if (type == 7) {
+                blocks.push_back(std::make_unique<StrongBlock>(x, y, 3));
+            }
+            else {
+                blocks.push_back(std::make_unique<IndestructibleBlock>(x, y));
+            }
         }
     }
 }
@@ -45,18 +50,24 @@ void initGame() {
 void processInput(bool& quit) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) quit = true;
-        if (e.type == SDL_MOUSEMOTION) paddle.x = e.motion.x - paddle.w / 2;
+        if (e.type == SDL_QUIT) {
+            quit = true;
+        }
+        if (e.type == SDL_MOUSEMOTION) {
+            paddle.x = e.motion.x - paddle.w / 2;
+        }
         if (e.type == SDL_MOUSEBUTTONDOWN) {
             for (auto& ball : balls) {
                 if (ball.attached) {
                     ball.vx = 0;
                     ball.vy = -1;
                     ball.attached = false;
+                    break;
                 }
             }
         }
     }
+
     if (paddle.x < 0) paddle.x = 0;
     if (paddle.x + paddle.w > SCREEN_WIDTH) paddle.x = SCREEN_WIDTH - paddle.w;
 }
