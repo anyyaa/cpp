@@ -1,77 +1,188 @@
+#include "game.h"
 #include <SDL.h>
-#include <iostream>
-#include "gameboard.hpp"
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <queue>
+#include "repaint_bonus.h"
+#include "bomb_bonus.h"
 
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 600;
-const int TILE_SIZE = 40;
+std::vector<std::unique_ptr<Bonus>> pendingBonuses;
+SDL_Window* window = nullptr;
+SDL_Renderer* renderer = nullptr;
+std::vector<std::vector<Cell>> grid(GRID_SIZE, std::vector<Cell>(GRID_SIZE));
+int selectedX = -1, selectedY = -1;
+bool isAnimating = false;
+float animationOffset[GRID_SIZE][GRID_SIZE] = {};
+float animationSpeed = 4.0f;
+int lastClickX = -1, lastClickY = -1;
+Uint32 lastClickTime = 0;
 
-int main(int argc, char* argv[]) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        std::cerr << "Ошибка инициализации SDL: " << SDL_GetError() << std::endl;
-        return 1;
+void initGrid() {
+    for (int y = 0; y < GRID_SIZE; ++y) {
+        for (int x = 0; x < GRID_SIZE; ++x) {
+            grid[y][x].color = rand() % COLOR_COUNT;
+            grid[y][x].toBeDestroyed = false;
+        }
+    }
+}
+
+void renderGrid() {
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+    for (int y = 0; y < GRID_SIZE; ++y) {
+        for (int x = 0; x < GRID_SIZE; ++x) {
+            grid[y][x].render(renderer, x, y, animationOffset[y][x]);
+
+            for (const auto& bonus : pendingBonuses) {
+                if (bonus->targetX == x && bonus->targetY == y) {
+                    bonus->render(renderer, x, y);
+                    break;
+                }
+            }
+        }
     }
 
-    SDL_Window* window = SDL_CreateWindow(
-        "GameBoard Demo",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        SDL_WINDOW_SHOWN
-    );
+    SDL_RenderPresent(renderer);
+}
 
-    if (!window) {
-        std::cerr << "Ошибка создания окна: " << SDL_GetError() << std::endl;
-        SDL_Quit();
-        return 1;
+void swapCells(int x1, int y1, int x2, int y2) {
+    std::swap(grid[y1][x1], grid[y2][x2]);
+}
+
+bool isAdjacent(int x1, int y1, int x2, int y2) {
+    return (abs(x1 - x2) + abs(y1 - y2)) == 1;
+}
+
+void findMatches() {
+    bool visited[GRID_SIZE][GRID_SIZE] = {};
+
+    for (int y = 0; y < GRID_SIZE; ++y) {
+        for (int x = 0; x < GRID_SIZE; ++x) {
+            if (grid[y][x].color < 0 || visited[y][x]) continue;
+
+            std::vector<std::pair<int, int>> cluster;
+            int targetColor = grid[y][x].color;
+
+            std::queue<std::pair<int, int>> q;
+            q.push({ x, y });
+            visited[y][x] = true;
+
+            while (!q.empty()) {
+                auto current = q.front(); q.pop();
+                int cx = current.first;
+                int cy = current.second;
+                cluster.push_back(current);
+
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        if (abs(dx) + abs(dy) != 1) continue;
+                        int nx = cx + dx;
+                        int ny = cy + dy;
+                        if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && !visited[ny][nx]) {
+                            if (grid[ny][nx].color == targetColor) {
+                                visited[ny][nx] = true;
+                                q.push({ nx, ny });
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (cluster.size() >= 3) {
+                for (const auto& cell : cluster) {
+                    grid[cell.second][cell.first].toBeDestroyed = true;
+                }
+
+                if (cluster.size() > 3) {
+                    auto center = cluster[rand() % cluster.size()];
+                    if (rand() % 2 == 0) {
+                        pendingBonuses.push_back(std::make_unique<RepaintBonus>(center.first, center.second, targetColor));
+                    }
+                    else {
+                        pendingBonuses.push_back(std::make_unique<BombBonus>(center.first, center.second, targetColor));
+                    }
+                }
+            }
+        }
     }
+}
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer) {
-        std::cerr << "Ошибка создания рендерера: " << SDL_GetError() << std::endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
+void destroyMatches() {
+    for (int y = 0; y < GRID_SIZE; ++y) {
+        for (int x = 0; x < GRID_SIZE; ++x) {
+            if (grid[y][x].toBeDestroyed) {
+                grid[y][x].color = -1;
+                grid[y][x].toBeDestroyed = false;
+            }
+        }
     }
+}
 
-    int rows = SCREEN_HEIGHT / TILE_SIZE;
-    int cols = SCREEN_WIDTH / TILE_SIZE;
-    GameBoard board(rows, cols, TILE_SIZE);
+void applyGravity() {
+    isAnimating = false;
 
-    bool running = true;
-    SDL_Event event;
-    Uint32 lastTicks = SDL_GetTicks();
-
-    while (running) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT)
-                running = false;
-            else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
-                int x = event.button.x;
-                int y = event.button.y;
-                board.handleClick(x, y);
+    for (int x = 0; x < GRID_SIZE; ++x) {
+        for (int y = GRID_SIZE - 1; y >= 0; --y) {
+            if (grid[y][x].color == -1) {
+                for (int ny = y - 1; ny >= 0; --ny) {
+                    if (grid[ny][x].color != -1) {
+                        grid[y][x].color = grid[ny][x].color;
+                        grid[ny][x].color = -1;
+                        animationOffset[y][x] = -CELL_SIZE * (y - ny);
+                        isAnimating = true;
+                        break;
+                    }
+                }
             }
         }
 
-        Uint32 currentTicks = SDL_GetTicks();
-        float deltaTime = (currentTicks - lastTicks) / 1000.0f;
-        lastTicks = currentTicks;
-
-        board.update(deltaTime);
-
-        SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
-        SDL_RenderClear(renderer);
-
-        board.render(renderer);
-
-        SDL_RenderPresent(renderer);
-        SDL_Delay(16); // ~60 FPS
+        for (int y = 0; y < GRID_SIZE; ++y) {
+            if (grid[y][x].color == -1) {
+                grid[y][x].color = rand() % COLOR_COUNT;
+                animationOffset[y][x] = -CELL_SIZE * (GRID_SIZE - y);
+                isAnimating = true;
+            }
+        }
     }
+}
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+void applyBonuses() {
+    for (auto& bonus : pendingBonuses) {
+        bonus->apply(grid);
+    }
+    pendingBonuses.clear();
+}
 
-    return 0;
+void updateAnimations() {
+    bool stillAnimating = false;
+    for (int y = 0; y < GRID_SIZE; ++y) {
+        for (int x = 0; x < GRID_SIZE; ++x) {
+            if (animationOffset[y][x] != 0.0f) {
+                if (animationOffset[y][x] < 0) {
+                    animationOffset[y][x] += animationSpeed;
+                    if (animationOffset[y][x] > 0) animationOffset[y][x] = 0;
+                }
+                else {
+                    animationOffset[y][x] -= animationSpeed;
+                    if (animationOffset[y][x] < 0) animationOffset[y][x] = 0;
+                }
+                stillAnimating = true;
+            }
+        }
+    }
+    isAnimating = stillAnimating;
+}
+
+void handleDoubleClick(int x, int y) {
+    for (auto it = pendingBonuses.begin(); it != pendingBonuses.end(); ++it) {
+        if ((*it)->targetX == x && (*it)->targetY == y) {
+            (*it)->onDoubleClick(grid);
+            pendingBonuses.erase(it);
+            renderGrid();
+            SDL_Delay(300);
+            break;
+        }
+    }
 }
