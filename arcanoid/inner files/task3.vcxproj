@@ -148,16 +148,17 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ball.cpp" />
+    <ClCompile Include="block.cpp" />
     <ClCompile Include="bonus.cpp" />
-    <ClCompile Include="common.hpp" />
     <ClCompile Include="game.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="render.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ball.hpp" />
+    <ClInclude Include="block.hpp" />
     <ClInclude Include="bonus.hpp" />
-    <ClInclude Include="game.hpp" />
+    <ClInclude Include="common.hpp" />
     <ClInclude Include="render.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
